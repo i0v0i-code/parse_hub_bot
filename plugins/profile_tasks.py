@@ -41,6 +41,7 @@ PLATFORM_ALIASES = {
     "哔哩哔哩": "bilibili",
 }
 STATUS_LABELS = {
+    "paused": "已暂停",
     "queued": "排队中",
     "running": "执行中",
     "completed": "完成",
@@ -48,6 +49,9 @@ STATUS_LABELS = {
     "failed": "失败",
 }
 STATUS_ALIASES = {
+    "paused": "paused",
+    "暂停": "paused",
+    "已暂停": "paused",
     "queued": "queued",
     "queue": "queued",
     "排队": "queued",
@@ -141,6 +145,8 @@ def _reason_line(job):
 
 
 def _login_hint(job):
+    if job.get("platform") in {"xhs", "douyin"}:
+        return "该平台的主页批量功能已停用，历史记录保留；请发送单个作品链接。"
     reason = str(job.get("enumeration_reason") or "")
     state = str(job.get("login_state") or "")
     if reason in {"login_required", "login_expired"} or state in {"login_required", "expired"}:
@@ -255,7 +261,7 @@ def _job_number(value):
 
 
 def _retryable(job):
-    return str(job.get("status")) in RETRYABLE_STATUSES
+    return job.get("platform") == "bilibili" and str(job.get("status")) in RETRYABLE_STATUSES
 
 
 def _prune_menus():

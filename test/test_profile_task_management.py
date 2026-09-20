@@ -205,6 +205,7 @@ def test_management_parser_and_private_callback_boundary(monkeypatch):
 def test_legacy_retry_requires_original_owner_private_message(tmp_path, monkeypatch):
     monkeypatch.setenv("WEBDAV_OWNER_TGID", str(OWNER))
     store, old_id = _store(tmp_path / "valid")
+    _set_job_platform(store, old_id, "bilibili")
     row = store.db.execute("SELECT data FROM jobs WHERE id=?", (old_id,)).fetchone()
     data = json.loads(row[0])
     data.pop("requester_id", None)
@@ -238,6 +239,7 @@ def test_legacy_retry_requires_original_owner_private_message(tmp_path, monkeypa
     assert retry["request_chat_type"] == "private"
 
     invalid_store, invalid_id = _store(tmp_path / "invalid")
+    _set_job_platform(invalid_store, invalid_id, "bilibili")
     invalid_row = invalid_store.db.execute("SELECT data FROM jobs WHERE id=?", (invalid_id,)).fetchone()
     invalid_data = json.loads(invalid_row[0])
     invalid_data.pop("requester_id", None)
@@ -389,3 +391,10 @@ def test_management_command_replies_before_stopping_propagation(monkeypatch):
         asyncio.run(module.profile_task_command(object(), Message()))
 
     assert replies and replies[0].startswith("用户下载任务｜第 1/1 页")
+
+
+def _set_job_platform(store, job_id, platform):
+    job = store.job(job_id)
+    job['platform'] = platform
+    with store.db:
+        store.db.execute('UPDATE jobs SET platform=?,data=? WHERE id=?', (platform, json.dumps(job), job_id))

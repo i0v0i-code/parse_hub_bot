@@ -13,7 +13,7 @@ from i18n import t_
 from log import logger
 from services.profile_store import ProfileStore, RetryRejected
 from services.profile_capacity import ProfileCapacity, CapacityDeferred, CollectionPending
-from services.profile_client import resolve_profile,enumerate_profile,enumerate_profile_stream
+from services.profile_client import resolve_profile
 from services.profile_archive import upload_item,upload_report,restore_item,user_folder,upload_collection
 from services.webdav import WebDavArchiveConfig,_archive_files
 from services.owner_policy import (BATCH_DENIED, archive_scope, job_principal, message_principal,
@@ -27,14 +27,10 @@ def safe_error(error):
 
 
 def cooldown_until(platform):
-    if platform == 'xhs':
-        from services import xhs_rate_limit
-        state = xhs_rate_limit.read_state()
-    elif platform in ('bilibili', 'douyin'):
-        from services import platform_rate_limit
-        state = platform_rate_limit.read_state(platform)
-    else:
+    if platform != 'bilibili':
         return 0.0
+    from services import platform_rate_limit
+    state = platform_rate_limit.read_state(platform)
     return float(state.get('until', 0))
 
 
@@ -68,6 +64,7 @@ class ProfileManager:
         self.root=bs.data_path/'profile_jobs'
         self.root.mkdir(parents=True,exist_ok=True,mode=0o700)
         self.store=ProfileStore(self.root/'state.sqlite3')
+        self.store.pause_legacy_profiles()
         self.store.recover()
         self.active={}
         self.send_locks={}
@@ -109,7 +106,7 @@ class ProfileManager:
                                        requester_id=principal.requester_id,
                                        request_chat_type=principal.chat_type)
         if created:
-            note=await sender.text_no_preview(f'已创建用户下载任务 #{job["id"]}\n用户 ID：{uid}\n最多同时运行 3 个主页任务，每个平台 1 个；每个主页内 1 个作品并发。视频和图文保存到 WebDAV 并回传。\n按需分页读取作品列表，重复作品会跳过。')
+            note=await sender.text_no_preview(f'已创建用户下载任务 #{job["id"]}\n用户 ID：{uid}\nB站主页依次执行，每个主页内 1 个作品并发。作品保存到 WebDAV 并回传。\n按需分页读取作品列表，重复作品会跳过。')
             self.store.set_job(job['id'],progress_message_id=note.id)
         else:
             await sender.text_no_preview(f'该用户已有任务 #{job["id"]} 正在执行，不会重复下载。')
@@ -124,6 +121,9 @@ class ProfileManager:
         job = self.store.job(job_id)
         if job is None or str(job.get('chat_id')) != str(chat_id):
             raise RetryRejected('not_found', f'未找到任务 #{job_id}')
+
+        if job['platform'] != 'bilibili':
+            raise RetryRejected('platform_disabled', '该平台的主页批量功能已停用，历史记录保留；请发送单个作品链接。')
 
         principal = job_principal(job)
         if principal is None:
@@ -158,7 +158,7 @@ class ProfileManager:
         return retry
 
     def resume_after_login(self, platform, chat_id):
-        if platform not in {'xhs', 'douyin', 'bilibili'} or owner_id() is None or chat_id != owner_id():
+        if platform != 'bilibili' or owner_id() is None or chat_id != owner_id():
             return []
         resumed = self.store.resume_login_jobs(platform, chat_id)
         if resumed:
@@ -167,14 +167,14 @@ class ProfileManager:
 
     async def _scheduler(self):
         while not self.closing:
-            # Up to three profile jobs globally, with one active job per platform.
-            queued=self.store.queued_jobs()
+            # Only Bilibili profiles remain enabled; preserve legacy records.
+            queued=[job for job in self.store.queued_jobs() if job['platform']=='bilibili']
             if shutil.disk_usage(self.root).free<8*1024**3:
                 # Under pressure, drain existing originals instead of letting
                 # earlier download-only jobs repeatedly occupy the available slots.
                 queued.sort(key=lambda j:not any(i.get('local_dir') and i.get('status')!='complete' for i in self.store.items(j['platform'],j['user_id'])))
             for job in queued:
-                if len(self.active)>=3:break
+                if self.active:break
                 jid=job['id']
                 if jid in self.active:continue
                 try:
@@ -213,7 +213,7 @@ class ProfileManager:
         """Persist QR delivery and wait for verified browser authentication."""
         from services.profile_login import start_login,wait_logged_in,cancel_login,qr_bytes
         import tempfile
-        platform_name={'xhs':'小红书','douyin':'抖音'}.get(platform,platform)
+        platform_name='B站'
         sid=None;qr_path=None
         self.store.set_job(jid,login_state='starting',enumeration_reason='login_required')
         try:
@@ -267,6 +267,9 @@ class ProfileManager:
         # New jobs persist trusted Telegram provenance. Legacy jobs must prove
         # it from the original message, never from the bot's recovery message.
         job=self.store.job(jid)
+        if job['platform'] != 'bilibili':
+            self.store.set_job(jid,status='paused',retry_at=0)
+            return
         principal=job_principal(job)
         if 'requester_id' not in job and job.get('chat_id')==owner_id():
             try:
@@ -489,7 +492,7 @@ class ProfileManager:
                     if result.get('complete'):
                         self.store.save_scan_cache(jid,'complete',{k:v for k,v in result.items() if k!='items'})
                 else:
-                    result=await enumerate_profile_stream(job['url'],ingest_batch)
+                    raise ValueError('该平台的主页批量功能已停用')
             except Exception as error:
                 enumeration_error=True
                 result=dict(platform=platform,user_id=uid,items=[],complete=False,reason=safe_error(error),pages=pages_seen)

@@ -10,7 +10,7 @@ import json
 import os
 import time
 
-SOCKET = os.getenv('PROFILE_BROWSER_SOCKET', '/run/parse-hub-browser/browser.sock')
+SOCKET = os.getenv('PROFILE_RELOGIN_SOCKET', '/run/parse-hub-browser/relogin.sock')
 
 
 async def _call(payload: dict, timeout: float = 120, socket: str | None = None) -> dict:
@@ -30,6 +30,8 @@ async def _call(payload: dict, timeout: float = 120, socket: str | None = None) 
 
 async def start_login(platform: str, timeout: float = 120) -> dict:
     """Open the login dialog and return {session_id, status, qr (data URL), expires_at}."""
+    if platform != 'bilibili':
+        raise ValueError('仅保留 B站登录')
     return await _call({'op': 'login_start', 'platform': platform}, timeout)
 
 

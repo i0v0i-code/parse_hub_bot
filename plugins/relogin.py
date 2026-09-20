@@ -7,7 +7,7 @@ from services.profile_login import _call,qr_bytes
 from services.login_verification import Pending,_pending,PROMPT
 
 SOCKET='/run/parse-hub-browser/relogin.sock'
-LABELS={'douyin':'抖音','xhs':'小红书','bilibili':'B站'}
+LABELS={'bilibili':'B站'}
 _menus={}
 _active={}
 
@@ -52,6 +52,8 @@ async def relogin_callback(cli,q):
     task=asyncio.create_task(run_login(cli,q.message,action,token));_active[chat]=task
 
 async def run_login(cli,msg,platform,token):
+    if platform not in LABELS:
+        return
     sid=None;key=None;chat=msg.chat.id
     security_qr_digest=None;security_notice_sent=False;security_extended=False;last_state=None
     try:
@@ -82,17 +84,8 @@ async def run_login(cli,msg,platform,token):
                 key=(chat,prompt.id);deadline=time.monotonic()+300
                 _pending[key]=Pending(sid,chat,prompt.id,chat,deadline,socket=SOCKET)
             if state=='verification_required':
-                raw=qr_bytes(r) if r.get('verification_kind')=='xhs_security_qr' else None
-                if raw:
-                    digest=hashlib.sha256(raw).hexdigest()
-                    if digest!=security_qr_digest:
-                        image=io.BytesIO(raw);image.name='xhs-security-verification.png'
-                        sent=await cli.send_photo(chat,image,caption=f'{LABELS[platform]}需要额外安全验证：请使用已登录该账号的小红书 App 扫描此二维码确认身份。\n扫码完成后保持此对话，机器人会自动确认；确认前不会替换旧 Cookie。',reply_to_message_id=msg.id)
-                        back=await cli.get_messages(chat,sent.id)
-                        if not back or not getattr(back,'photo',None):raise RuntimeError('security_qr_photo_readback_failed')
-                        security_qr_digest=digest;security_notice_sent=True
-                elif not security_notice_sent:
-                    await cli.send_message(chat,f'{LABELS[platform]}需要额外安全验证，但暂时没有取得二维码。请在 App 内完成验证；机器人会继续等待，不会替换旧 Cookie。',reply_to_message_id=msg.id)
+                if not security_notice_sent:
+                    await cli.send_message(chat,'B站需要额外安全验证，请在 App 内完成验证。',reply_to_message_id=msg.id)
                     security_notice_sent=True
                 if not security_extended:
                     deadline=max(deadline,time.monotonic()+300);security_extended=True

@@ -24,7 +24,6 @@ from pyrogram.types import (
     InputRichMessage,
     LinkPreviewOptions,
     Message,
-    ReplyParameters,
 )
 
 from core import bs
@@ -42,6 +41,7 @@ GIF_ONLY_SKIP_DOWNLOAD_COUNT_THRESHOLD = 5
 
 
 type ReplyMediaGroupItem = InputMediaPhoto | InputMediaVideo | InputMediaDocument
+type PathType = str | os.PathLike[str]
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,10 +50,6 @@ class MessageSender:
     msg: Message
     config: SettingsConfig
     delete_after_seconds: float | None = None
-
-    @property
-    def reply_parameters(self) -> ReplyParameters | None:
-        return None if self.config.reply_msg else ReplyParameters()
 
     def delete_after(self, seconds: float | int | None) -> "MessageSender":
         if not seconds:
@@ -91,8 +87,9 @@ class MessageSender:
                 return await send_coro_fn()
             except (FloodWait, SlowmodeWait) as e:
                 if attempt < MAX_RETRIES - 1:
-                    logger.warning(f"{e.ID} 重试 ({attempt + 1}/{MAX_RETRIES})，等待 {e.value}s")
-                    await asyncio.sleep(e.value)
+                    wait_seconds = e.value if isinstance(e.value, int | float) else 0.5
+                    logger.warning(f"{e.ID} 重试 ({attempt + 1}/{MAX_RETRIES})，等待 {wait_seconds}s")
+                    await asyncio.sleep(float(wait_seconds))
                 else:
                     raise
             except Forbidden as e:
@@ -130,11 +127,10 @@ class MessageSender:
             Message,
             await self._send_and_schedule_delete(
                 partial(
-                    self.msg.reply_text,
+                    self.msg.reply if self.config.reply_msg else self.msg.answer,
                     text,
                     link_preview_options=link_preview_options,
                     reply_markup=reply_markup,
-                    reply_parameters=self.reply_parameters,
                 )
             ),
         )
@@ -155,7 +151,7 @@ class MessageSender:
 
     async def document(
         self,
-        document: str | BinaryIO,
+        document: PathType | BinaryIO,
         *,
         caption: str | None = None,
         force_document: bool | None = None,
@@ -165,11 +161,12 @@ class MessageSender:
             Message,
             await self._send_and_schedule_delete(
                 partial(
-                    self.msg.reply_document,
+                    (self.msg.reply_document if self.config.reply_msg else self.msg.answer_document)
+                    if use_reply_policy
+                    else self.msg.reply_document,
                     document,
                     caption=caption or "",
                     force_document=force_document,
-                    reply_parameters=self.reply_parameters if use_reply_policy else None,
                 )
             ),
         )
@@ -179,7 +176,7 @@ class MessageSender:
 
     async def force_document(
         self,
-        document: str | BinaryIO,
+        document: PathType | BinaryIO,
         *,
         caption: str | None = None,
         use_reply_policy: bool = True,
@@ -191,20 +188,24 @@ class MessageSender:
             use_reply_policy=use_reply_policy,
         )
 
-    async def photo(self, photo: str | BinaryIO, *, caption: str | None = None) -> Message:
+    async def photo(self, photo: PathType | BinaryIO, *, caption: str | None = None) -> Message:
         return cast(
             Message,
             await self._send_and_schedule_delete(
-                partial(self.msg.reply_photo, photo, caption=caption or "", reply_parameters=self.reply_parameters)
+                partial(
+                    self.msg.reply_photo if self.config.reply_msg else self.msg.answer_photo,
+                    photo,
+                    caption=caption or "",
+                )
             ),
         )
 
     async def video(
         self,
-        video: str | BinaryIO,
+        video: PathType | BinaryIO,
         *,
         caption: str | None = None,
-        video_cover: str | BinaryIO | None = None,
+        video_cover: PathType | BinaryIO | None = None,
         duration: int | None = None,
         width: int | None = None,
         height: int | None = None,
@@ -214,7 +215,7 @@ class MessageSender:
             Message,
             await self._send_and_schedule_delete(
                 partial(
-                    self.msg.reply_video,
+                    self.msg.reply_video if self.config.reply_msg else self.msg.answer_video,
                     video,
                     caption=caption or "",
                     video_cover=video_cover,
@@ -222,17 +223,16 @@ class MessageSender:
                     width=width or 0,
                     height=height or 0,
                     supports_streaming=True if supports_streaming is None else supports_streaming,
-                    reply_parameters=self.reply_parameters,
                 )
             ),
         )
 
     async def streaming_video(
         self,
-        video: str | BinaryIO,
+        video: PathType | BinaryIO,
         *,
         caption: str | None = None,
-        video_cover: str | BinaryIO | None = None,
+        video_cover: PathType | BinaryIO | None = None,
         duration: int | None = None,
         width: int | None = None,
         height: int | None = None,
@@ -249,10 +249,10 @@ class MessageSender:
 
     async def streaming_video_with_cover_fallback(
         self,
-        video: str | BinaryIO,
+        video: PathType | BinaryIO,
         *,
         caption: str | None = None,
-        video_cover: str | BinaryIO | None = None,
+        video_cover: PathType | BinaryIO | None = None,
         duration: int | None = None,
         width: int | None = None,
         height: int | None = None,
@@ -276,22 +276,24 @@ class MessageSender:
                 height=height,
             )
 
-    async def animation(self, animation: str | BinaryIO, *, caption: str | None = None) -> Message:
+    async def animation(self, animation: PathType | BinaryIO, *, caption: str | None = None) -> Message:
         return cast(
             Message,
             await self._send_and_schedule_delete(
                 partial(
-                    self.msg.reply_animation,
+                    self.msg.reply_animation if self.config.reply_msg else self.msg.answer_animation,
                     animation,
                     caption=caption or "",
-                    reply_parameters=self.reply_parameters,
                 )
             ),
         )
 
     async def media_group(self, media: list[ReplyMediaGroupItem]) -> list[Message]:
         return await self._send_and_schedule_delete(
-            partial(self.msg.reply_media_group, media=cast(Any, media), reply_parameters=self.reply_parameters)
+            partial(
+                self.msg.reply_media_group if self.config.reply_msg else self.msg.answer_media_group,
+                media=cast(Any, media),
+            )
         )
 
     async def rich_message(
@@ -300,21 +302,13 @@ class MessageSender:
         *,
         reply_markup: Ikm | None = None,
     ) -> Message:
-        if not self.msg.chat or not self.msg.chat.id:
-            raise ValueError("not chat or chat_id")
-        reply_parameters = (
-            ReplyParameters(message_id=self.msg.id) if self.reply_parameters is None else self.reply_parameters
-        )
         return cast(
             Message,
             await self._send_and_schedule_delete(
                 partial(
-                    self.cli.send_rich_message,
-                    chat_id=self.msg.chat.id,
-                    message_thread_id=self.msg.message_thread_id,
+                    self.msg.reply_rich if self.config.reply_msg else self.msg.answer_rich,
                     rich_message=rich_message,
                     reply_markup=reply_markup,
-                    reply_parameters=reply_parameters,
                 )
             ),
         )
@@ -491,8 +485,8 @@ async def send_cached(sender: MessageSender, entry: CacheEntry, url: str, *, cus
         await send_cached_multi(sender, entry.media, caption, video_cover=sender.config.video_cover)
 
 
-def media_input(media: str | BinaryIO | None) -> str | BinaryIO:
-    return cast(str | BinaryIO, media)
+def media_input(media: PathType | BinaryIO | None) -> PathType | BinaryIO:
+    return cast(PathType | BinaryIO, media)
 
 
 def build_input_media(

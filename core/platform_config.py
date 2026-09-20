@@ -2,7 +2,7 @@ import random
 from pathlib import Path
 
 from parsehub.types import Platform as PPlatform
-from pydantic import BaseModel, ConfigDict, HttpUrl, SecretStr, field_serializer
+from pydantic import AnyUrl, BaseModel, ConfigDict, SecretStr, field_serializer
 from yaml import safe_load
 
 from log import logger
@@ -24,8 +24,8 @@ class Platform(BaseModel):
 
     disable_parser_proxy: bool = False
     disable_downloader_proxy: bool = False
-    parser_proxies: list[HttpUrl] | None = None
-    downloader_proxies: list[HttpUrl] | None = None
+    parser_proxies: list[AnyUrl] | None = None
+    downloader_proxies: list[AnyUrl] | None = None
     cookies: list[MaskedSecretStr] | None = None
 
     @field_serializer("cookies")
@@ -53,8 +53,8 @@ class Platform(BaseModel):
 class PlatformsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    default_parser_proxies: list[HttpUrl] | None = None
-    default_downloader_proxies: list[HttpUrl] | None = None
+    default_parser_proxies: list[AnyUrl] | None = None
+    default_downloader_proxies: list[AnyUrl] | None = None
     platforms: dict[str, Platform] = {}
 
     @classmethod

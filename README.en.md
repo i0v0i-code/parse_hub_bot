@@ -42,27 +42,28 @@
 
 ## 📦 Supported Platforms
 
-| Platform        | Video | Image Posts |          Other           |
-|:----------------|:-----:|:-----------:|:------------------------:|
-| **Twitter / X** |  ✅   |     ✅      |       📝 Articles        |
-| **Instagram**   |  ✅   |     ✅      |                          |
-| **YouTube**     |  ✅   |             |         🎵 Music         |
-| **Facebook**    |  ✅   |             |                          |
-| **Threads**     |  ✅   |     ✅      |                          |
-| **Bilibili**    |  ✅   |             |        📝 Updates        |
-| **Douyin**      |  ✅   |     ✅      |      ☀️ Daily posts      |
-| **TikTok**      |  ✅   |     ✅      |                          |
-| **Weibo**       |  ✅   |     ✅      |                          |
-| **Xiaohongshu** |  ✅   |     ✅      |                          |
-| **Tieba**       |  ✅   |     ✅      |                          |
-| **WeChat OA**   |       |     ✅      |                          |
-| **Kuaishou**    |  ✅   |     ✅      |                          |
-| **Coolapk**     |       |     ✅      |                          |
-| **Pipixia**     |  ✅   |     ✅      |                          |
-| **Zuiyou**      |  ✅   |     ✅      |                          |
-| **Xiaoheihe**   |  ✅   |     ✅      |                          |
-| **Snapchat**    |  ✅   |             |                          |
-| **Zhihu**       |  ✅   |     ✅      | 🐶 Q&A, columns, circles |
+| Platform        | Video | Image Posts |              Other              |
+|:----------------|:-----:|:-----------:|:-------------------------------:|
+| **Twitter / X** |  ✅   |     ✅      |           📝 Articles           |
+| **Instagram**   |  ✅   |     ✅      |                                 |
+| **YouTube**     |  ✅   |             |            🎵 Music             |
+| **Facebook**    |  ✅   |             |                                 |
+| **Threads**     |  ✅   |     ✅      |                                 |
+| **Bilibili**    |  ✅   |             |           📝 Updates            |
+| **Douyin**      |  ✅   |     ✅      |         ☀️ Daily posts          |
+| **TikTok**      |  ✅   |     ✅      |                                 |
+| **Weibo**       |  ✅   |     ✅      |                                 |
+| **Xiaohongshu** |  ✅   |     ✅      |                                 |
+| **Tieba**       |  ✅   |     ✅      |                                 |
+| **WeChat OA**   |       |     ✅      |                                 |
+| **Kuaishou**    |  ✅   |     ✅      |                                 |
+| **Coolapk**     |       |     ✅      |                                 |
+| **Pipixia**     |  ✅   |     ✅      |                                 |
+| **Zuiyou**      |  ✅   |     ✅      |                                 |
+| **Xiaoheihe**   |  ✅   |     ✅      |                                 |
+| **Snapchat**    |  ✅   |             |                                 |
+| **Zhihu**       |  ✅   |     ✅      | 🐶 Q&A, columns, circles, Daily |
+| **Douban**      |  ✅   |     ✅      |         👥 Group topics         |
 
 > 🔧 More platforms are being added continuously...
 
@@ -118,6 +119,7 @@ Configure **proxies** and **cookies** for each parser platform in `data/config/p
 # ═══════════════════════ Global default proxies ═══════════════════════
 # A platform without an individual proxy configuration uses the global default.
 # A proxy may be a single address (string) or a pool of addresses (list, selected at random).
+# Supported schemes: http://, https://, socks5://, socks5h://
 
 default_parser_proxies: http://127.0.0.1:7890        # Parser proxy (single)
 default_downloader_proxies: # Downloader proxy (pool)
@@ -179,6 +181,7 @@ Direct connection (no proxy)
 | `xiaoheihe` | Xiaoheihe   |
 | `snapchat`  | Snapchat    |
 | `zhihu`     | Zhihu       |
+| `douban`    | Douban      |
 
 ### 🍪 Platforms Supporting Cookies
 
@@ -192,6 +195,7 @@ Direct connection (no proxy)
 - `Kuaishou`
 - `Xiaohongshu`
 - `Zhihu`
+- `Douban`
 
 ### 📌 Configuration Examples
 

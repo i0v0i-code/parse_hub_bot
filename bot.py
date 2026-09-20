@@ -56,7 +56,7 @@ class Bot(Client):
         start_profile_manager(self)
         return self
 
-    async def stop(self, *args: Any, **kwargs: Any) -> None:
+    async def stop(self, *args: Any, **kwargs: Any) -> Client:
         ws.exit_flag = True
         from services.profile_jobs import stop_profile_manager
         await stop_profile_manager()
@@ -65,6 +65,7 @@ class Bot(Client):
         # 结束时清理下载残留
         if self.cfg.download_dir.exists() and not self.cfg.debug_skip_cleanup:
             shutil.rmtree(self.cfg.download_dir)
+        return self
 
     def init_watchdog(self) -> None:
         self.add_handler(ConnectHandler(on_connect))

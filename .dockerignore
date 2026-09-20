@@ -3,3 +3,6 @@
 data
 downloads
 logs
+.git
+**/__pycache__
+.pytest_cache

@@ -415,6 +415,17 @@ class ProfileStore:
                 return True
         return False
 
+    def pause_legacy_profiles(self):
+        """Suspend retired profile workers without changing media or delivery rows."""
+        with self.db:
+            self.db.execute('BEGIN IMMEDIATE')
+            rows = self.db.execute("SELECT id,data FROM jobs WHERE platform IN ('xhs','douyin') AND status IN ('queued','running')").fetchall()
+            for row in rows:
+                data = json.loads(row['data'])
+                data['status'] = 'paused'
+                self.db.execute("UPDATE jobs SET status='paused',data=? WHERE id=?", (json.dumps(data), row['id']))
+        return len(rows)
+
     def recover(self):
         with self.db:
             self.db.execute('BEGIN IMMEDIATE')
@@ -465,7 +476,7 @@ class ProfileStore:
         items = self.items(platform,user_id)
         deliveries = [self.delivery(platform,user_id,i['post_id'],job['chat_id']) or {} for i in items]
         safe = self._safe_text
-        labels = dict(queued='等待重试/执行',running='处理中',pending='待处理',downloading='下载中',archived='已归档',complete='成功',completed='完成',incomplete='部分完成',succeeded='成功',failed='失败',skipped='跳过')
+        labels = dict(paused='已暂停（主页批量已停用）',queued='等待重试/执行',running='处理中',pending='待处理',downloading='下载中',archived='已归档',complete='成功',completed='完成',incomplete='部分完成',succeeded='成功',failed='失败',skipped='跳过')
         lines = [f'用户作品下载记录｜任务 #{safe(job_id)}',f'平台：{safe(platform)}｜用户 ID：{safe(user_id)}',f'用户名：{safe(profile.get("username"))}',f'用户名历史：{safe("、".join(profile.get("aliases",[])))}',f'开始时间：{safe(job.get("started_at")) or "未开始"}',f'结束时间：{safe(job.get("ended_at")) or "未结束"}',f'状态：{labels.get(job["status"],safe(job["status"]))}',f'列表读取：{"可见作品分页结束" if job["enumeration_complete"] else "未完成"}｜页数：{job["pages"]}',f'读取说明：{safe(job["enumeration_reason"])}',f'任务错误：{safe(job["last_error"])}',f'作品总数：{len(items)}']
         lines.insert(3, f'公开账号：{safe(profile.get("public_id"))}｜归档目录账号：{safe(profile.get("folder_id"))}｜数字 UID：{safe(profile.get("numeric_uid"))}')
         for label,values in [('下载',[i['download_status'] for i in items]),('归档',[i['archive_status'] for i in items]),('回传',[d.get('status','pending') for d in deliveries])]:

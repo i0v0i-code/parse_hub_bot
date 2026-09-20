@@ -137,6 +137,9 @@ def replace_url(platform: Platform | None, v: str) -> str:
             v = v.replace("mmbiz.qpic.cn", "qpic.cn.in/mmbiz.qpic.cn")
         case Platform.COOLAPK:
             v = v.replace("image.coolapk.com", "qpic.cn.in/image.coolapk.com")
+        case Platform.DOUBAN:
+            # 豆瓣图片分片域名 img1~imgN.doubanio.com
+            v = re.sub(r"img\d+\.doubanio\.com", r"qpic.cn.in/\g<0>", v)
     return v
 
 
