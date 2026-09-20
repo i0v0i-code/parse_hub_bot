@@ -627,28 +627,23 @@ async def send_multi(
                 elif sent and sent.animation:
                     media_list.append(CacheMedia(type=CacheMediaType.ANIMATION, file_id=sent.animation.file_id))
 
-    try:
-        for batch in batched(photos_videos, 10):
-            if batch[-1] == photos_videos[-1]:
-                batch[0].caption = caption
-
+    for batch in batched(photos_videos, 10):
+        if batch[-1] == photos_videos[-1]:
+            batch[0].caption = caption
+        try:
             await sender.upload_photo()
             sent_msgs = await sender.media_group(list(batch))
             for m in sent_msgs:
                 if cm := cache_media_from_message(m):
                     media_list.append(cm)
-    except Exception as e:
-        logger.warning(f"上传失败 {e}, 使用兼容模式上传")
-        input_documents: list[InputMediaDocument] = [
-            InputMediaDocument(media=media_input(item.media)) for item in photos_videos
-        ]
-        for document_batch in batched(input_documents, 10):
-            if document_batch[-1] == input_documents[-1]:
-                document_batch[-1].caption = caption
-
+        except Exception as e:
+            logger.warning(f"上传失败 {type(e).__name__}, 使用兼容模式上传")
+            not_cache = True
+            documents = [InputMediaDocument(media=media_input(item.media)) for item in batch]
+            if batch[-1] == photos_videos[-1]:
+                documents[-1].caption = caption
             await sender.upload_document()
-            await sender.media_group(list(document_batch))
-        return None
+            await sender.media_group(documents)
 
     return None if not_cache else media_list
 

@@ -16,6 +16,7 @@ from services import ParseService
 from services.media import ProcessedMedia, process_media_files
 from services.media import progress as fmt_progress
 from services.webdav import WebDavArchiveConfig, archive_output
+from services.owner_policy import archive_allowed
 from services.youtube_variants import needs_telegram_variant, prepare_telegram_video
 from utils.helpers import to_list
 
@@ -226,7 +227,7 @@ class ParsePipeline:
             return None
         logger.debug(f"下载完成: output_dir={download_result.output_dir}")
 
-        webdav_config = WebDavArchiveConfig.from_env()
+        webdav_config = WebDavArchiveConfig.from_env() if archive_allowed() else None
         if webdav_config:
             await self._reporter.report(self._t("保 存 中..."))
             archived = await self._step(
@@ -245,7 +246,7 @@ class ParsePipeline:
 
         if (
             not self._skip_media_processing
-            and p.id == "youtube"
+            and p.id in {"youtube", "bilibili"}
             and needs_telegram_variant(download_result)
         ):
             await self._reporter.report(self._t("TG 版本下载中..."))

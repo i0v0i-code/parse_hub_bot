@@ -5,7 +5,7 @@ from typing import Any
 import pillow_heif
 from pyrogram import Client
 from pyrogram.handlers import ConnectHandler, DisconnectHandler
-from pyrogram.types import BotCommand
+from pyrogram.types import BotCommand, BotCommandScopeChat
 
 from core import bs, on_connect, on_disconnect, ws
 from db.engine import close_db
@@ -14,6 +14,7 @@ from i18n import ISO639_MAP
 from log import logger, setup_logging
 from plugins.helpers import COMMANDS
 from services import parse_cache
+from services.owner_policy import owner_id
 from utils.event_loop import setup_optimized_event_loop
 
 pillow_heif.register_heif_opener()
@@ -51,10 +52,14 @@ class Bot(Client):
         parse_cache.start_cleanup()
         await super().start(*args, **kwargs)
         await self.set_menu()
+        from services.profile_jobs import start_profile_manager
+        start_profile_manager(self)
         return self
 
     async def stop(self, *args: Any, **kwargs: Any) -> None:
         ws.exit_flag = True
+        from services.profile_jobs import stop_profile_manager
+        await stop_profile_manager()
         await super().stop(*args, **kwargs)
         await close_db()
         # 结束时清理下载残留
@@ -67,18 +72,29 @@ class Bot(Client):
 
     async def set_menu(self) -> None:
         commands = await self.get_bot_commands()
-        if len(commands) == len(COMMANDS) and all(c.description in str(COMMANDS.values()) for c in commands):
-            logger.debug("菜单无变化, 跳过设置")
-            return
+        unchanged = len(commands) == len(COMMANDS) and all(c.description in str(COMMANDS.values()) for c in commands)
+        if not unchanged:
+            for iso639, bcp47 in ISO639_MAP.items():
+                tc = {k: v[bcp47] for k, v in COMMANDS.items()}
+                await self.set_bot_commands(
+                    [BotCommand(command=k, description=v) for k, v in tc.items()],
+                    language_code=iso639,
+                )
+                logger.debug(f"{iso639 or '默认'} 菜单已设置: {tc}")
+                await asyncio.sleep(0.5)
 
-        for iso639, bcp47 in ISO639_MAP.items():
-            tc = {k: v[bcp47] for k, v in COMMANDS.items()}
-            await self.set_bot_commands(
-                [BotCommand(command=k, description=v) for k, v in tc.items()],
-                language_code=iso639,
+        # Task controls are private-owner functionality; do not add them to
+        # the global menu visible to other chats.
+        if (owner := owner_id()) is not None:
+            owner_commands = [c for c in commands if c.command not in {"tasks", "task", "retry"}]
+            owner_commands.extend(
+                [
+                    BotCommand(command="tasks", description="查看用户下载任务"),
+                    BotCommand(command="task", description="查看任务详情"),
+                    BotCommand(command="retry", description="重试失败任务"),
+                ]
             )
-            logger.debug(f"{iso639 or '默认'} 菜单已设置: {tc}")
-            await asyncio.sleep(0.5)
+            await self.set_bot_commands(owner_commands, scope=BotCommandScopeChat(chat_id=owner))
 
 
 if __name__ == "__main__":

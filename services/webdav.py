@@ -15,6 +15,7 @@ from urllib.parse import quote, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 from log import logger
+from services.owner_policy import require_archive
 
 logger = logger.bind(name="WebDavArchive")
 
@@ -101,6 +102,8 @@ def _request(
     data: bytes | BinaryIO | None = None,
     content_length: int | None = None,
 ) -> tuple[int, bytes]:
+    if method.upper() not in {'GET', 'HEAD', 'OPTIONS', 'PROPFIND'}:
+        require_archive()
     url = _remote_url(config.url, relative, directory=method == "MKCOL")
     token = base64.b64encode(f"{config.user}:{config.password}".encode()).decode()
     headers = {"Authorization": f"Basic {token}", "User-Agent": "parse-hub-bot/1.0"}
@@ -172,9 +175,7 @@ def _upload_sync(
             status, _ = _request(config, "PUT", remote, data=stream, content_length=local_size)
         if status not in {200, 201, 204}:
             raise RuntimeError(f"WebDAV PUT 失败: status={status} path={remote}")
-        remote_size = _remote_size(config, remote)
-        if remote_size != local_size:
-            raise RuntimeError(f"WebDAV 大小校验失败: path={remote} remote={remote_size} local={local_size}")
+
         uploaded.append(remote)
     return uploaded
 

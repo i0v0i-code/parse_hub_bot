@@ -24,6 +24,7 @@ from plugins.parse.sender import MessageSender, build_gif_button, send_cached, s
 from repo.settings import ParseMode
 from services import CacheEntry, CacheParseResult, ParsePipeline, ParseService, SettingsService, UserService
 from services.cache import parse_cache, persistent_cache
+from services.owner_policy import archive_allowed, message_archive_scope
 from utils.helpers import to_list, with_request_id
 from utils.rate_limit import ParseRateLimitExceeded, parse_rate_limit
 
@@ -111,6 +112,9 @@ async def parse(cli: Client, msg: Message) -> None:
 @with_request_id
 async def _handle_parse_request(req: ParseRequest) -> None:
     try:
+        from services.profile_jobs import maybe_submit_profile
+        if await maybe_submit_profile(req):
+            return
         r = await handle_parse(req)
     except ParseRateLimitExceeded as e:
         if e.should_notify:
@@ -140,8 +144,12 @@ def _get_parse_user_id(req: ParseRequest) -> int | None:
 
 
 @parse_rate_limit(_get_parse_user_id)
+@message_archive_scope
 async def handle_parse(req: ParseRequest) -> bool:
     options = ParseOptions.from_mode(req.mode, bypass_cache=req.bypass_cache)
+    # Owner work must not wait on a TG-only download in another chat.
+    if archive_allowed():
+        options = replace(options, singleflight=False)
     logger.info(f"收到解析请求: url={req.url}, chat_id={req.chat_id}, msg_id={req.msg.id}, mode={req.mode}")
     if req.bypass_cache:
         logger.debug("bypass_cache=True 绕过缓存")
@@ -156,7 +164,10 @@ async def handle_parse(req: ParseRequest) -> bool:
         await reporter.report_error(req.t_("获取原始链接"), e)
         return False
 
-    if options.use_caching and not req.bypass_cache and (cached := await persistent_cache.get(raw_url)):
+    # A TG-only file-id is not proof of WebDAV archival. Repeated owner
+    # requests can reuse their own cache without another download/upload.
+    delivery_cache_key = f"owner-archive:{raw_url}" if archive_allowed() else raw_url
+    if options.use_caching and not req.bypass_cache and (cached := await persistent_cache.get(delivery_cache_key)):
         logger.debug("file_id 缓存命中, 直接发送")
         try:
             await send_cached(sender, cached, raw_url, custom_content=req.custom_content)
@@ -182,7 +193,7 @@ async def handle_parse(req: ParseRequest) -> bool:
         if (result := await pipeline.run()) is None:
             if pipeline.waited:
                 logger.debug("Singleflight 等待完成, 重新检查缓存")
-                if not req.bypass_cache and (cached := await persistent_cache.get(raw_url)):
+                if options.use_caching and not req.bypass_cache and (cached := await persistent_cache.get(delivery_cache_key)):
                     try:
                         await send_cached(sender, cached, raw_url, custom_content=req.custom_content)
                     except Exception as e:
@@ -211,7 +222,7 @@ async def handle_parse(req: ParseRequest) -> bool:
                         rich_message=InputRichMessage(markdown=caption),
                     )
                     await persistent_cache.set(
-                        raw_url,
+                        delivery_cache_key,
                         CacheEntry(
                             parse_result=CacheParseResult(
                                 title=parse_result.title, content=parse_result.markdown_content
@@ -235,7 +246,7 @@ async def handle_parse(req: ParseRequest) -> bool:
             )
             await sender.text_with_preview_above(caption)
             await persistent_cache.set(
-                raw_url,
+                delivery_cache_key,
                 CacheEntry(
                     parse_result=CacheParseResult(title=parse_result.title, content=parse_result.content),
                     telegraph_url=ph_url,
@@ -267,7 +278,7 @@ async def handle_parse(req: ParseRequest) -> bool:
             cache_entry = CacheEntry(
                 parse_result=CacheParseResult(title=parse_result.title, content=parse_result.content)
             )
-            await persistent_cache.set(raw_url, cache_entry)
+            await persistent_cache.set(delivery_cache_key, cache_entry)
             await reporter.dismiss()
             return True
 
@@ -283,7 +294,7 @@ async def handle_parse(req: ParseRequest) -> bool:
         try:
             media_cache_entry = await send_media(sender, parse_result, result.processed_list, caption, _t=req.t_)
             if media_cache_entry:
-                await persistent_cache.set(raw_url, media_cache_entry)
+                await persistent_cache.set(delivery_cache_key, media_cache_entry)
             await reporter.dismiss()
             return True
         except Exception as e:
